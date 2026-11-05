@@ -180,11 +180,24 @@
 
         <div class="settings-block">
           <p class="settings-title">备份</p>
-          <p class="settings-note">备份文件里带着本机钥匙，换手机也能恢复；但谁拿到这个文件，谁就能读，放好。</p>
+          <p id="backup-state" class="settings-note">还没备份过</p>
           <div class="settings-row">
             <button id="btn-export" class="btn" data-icon="download">导出备份</button>
             <button id="btn-import" class="btn" data-icon="upload">导入备份</button>
           </div>
+
+          <div id="backup-dir" class="backup-dir" hidden>
+            <div class="backup-dir-head">
+              <span class="backup-dir-icon" data-icon="folder"></span>
+              <span id="backup-dir-name" class="backup-dir-name">还没选文件夹</span>
+            </div>
+            <div class="settings-row">
+              <button id="btn-pick-dir" class="btn mini">选文件夹</button>
+              <button id="btn-save-dir" class="btn mini primary">存进这个文件夹</button>
+            </div>
+          </div>
+
+          <p id="backup-hint" class="settings-note"></p>
           <input id="import-file" type="file" accept="application/json,.json" hidden />
         </div>
 

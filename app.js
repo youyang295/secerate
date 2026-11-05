@@ -25,6 +25,7 @@
     refresh: SVG('<path d="M20 12a8 8 0 11-2.6-5.9"/><path d="M20 4.5V10h-5.5"/>'),
     spark: SVG('<path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9L12 3.5z"/>'),
     download: SVG('<path d="M12 4v10.5"/><path d="M8 11l4 4 4-4"/><path d="M4.5 18.5h15"/>'),
+    folder: SVG('<path d="M3.5 7.5A1.5 1.5 0 015 6h4.2l1.8 2.2H19a1.5 1.5 0 011.5 1.5v7.8A1.5 1.5 0 0119 19H5a1.5 1.5 0 01-1.5-1.5z"/>'),
     upload: SVG('<path d="M12 20V9.5"/><path d="M8 13l4-4 4 4"/><path d="M4.5 5.5h15"/>'),
     trash: SVG('<path d="M4.5 7h15"/><path d="M9.5 7V5.4A1.4 1.4 0 0110.9 4h2.2a1.4 1.4 0 011.4 1.4V7"/><path d="M6.5 7l.8 12.1a1.4 1.4 0 001.4 1.3h6.6a1.4 1.4 0 001.4-1.3L18.5 7"/>'),
   };
@@ -633,19 +634,143 @@
 
   function openSettings() {
     renderFolderSettings();
+    renderBackupState();
     openSheet('settings');
   }
 
+  /* ---------------- 备份 ---------------- */
+
+  /* 浏览器安全限制：网页不能打开「文件管理器」或跳转到本地文件夹。
+     能做的是——在电脑浏览器上选一次文件夹（File System Access API），
+     把句柄记下来，之后点一下就直接把文件写进那个文件夹，不再弹保存框。 */
+  const canPickDir = typeof window.showDirectoryPicker === 'function';
+  let backupDirHandle = null;
+
+  function backupFileName() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    return `密码箱备份-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}.json`;
+  }
+
+  function backupJSON() {
+    return JSON.stringify({ ...state.file, deviceKey: state.deviceKey || deviceKey() }, null, 2);
+  }
+
+  function openIdb() {
+    return new Promise((res, rej) => {
+      const req = indexedDB.open('vault-fs', 1);
+      req.onupgradeneeded = () => {
+        if (!req.result.objectStoreNames.contains('handles')) req.result.createObjectStore('handles');
+      };
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+  }
+
+  function idbGet(k) {
+    return openIdb().then((db) => new Promise((res, rej) => {
+      const req = db.transaction('handles', 'readonly').objectStore('handles').get(k);
+      req.onsuccess = () => res(req.result || null);
+      req.onerror = () => rej(req.error);
+    }));
+  }
+
+  function idbSet(k, v) {
+    return openIdb().then((db) => new Promise((res, rej) => {
+      const tx = db.transaction('handles', 'readwrite');
+      tx.objectStore('handles').put(v, k);
+      tx.oncomplete = () => res();
+      tx.onerror = () => rej(tx.error);
+    }));
+  }
+
+  async function loadBackupDir() {
+    if (!canPickDir) return;
+    try {
+      backupDirHandle = await idbGet('backupDir');
+    } catch {
+      backupDirHandle = null;
+    }
+    renderBackupState();
+  }
+
+  function daysSince(ts) {
+    if (!ts) return null;
+    return Math.floor((Date.now() - ts) / 86400000);
+  }
+
+  function renderBackupState() {
+    const stateEl = $('backup-state');
+    if (!stateEl) return;
+    const dirBox = $('backup-dir');
+    const dirName = $('backup-dir-name');
+    const hint = $('backup-hint');
+
+    const d = daysSince(state.prefs.lastBackupAt);
+    if (d === null) stateEl.textContent = '还没备份过';
+    else if (d === 0) stateEl.textContent = '上次备份：今天';
+    else stateEl.textContent = `上次备份：${d} 天前`;
+    stateEl.classList.toggle('is-stale', d === null || d >= 14);
+
+    if (dirBox) dirBox.hidden = !canPickDir;
+    if (dirName) dirName.textContent = backupDirHandle ? backupDirHandle.name : '还没选文件夹';
+
+    if (hint) {
+      hint.textContent = canPickDir
+        ? '选一次文件夹，以后点「存进这个文件夹」就直接写进去，不再弹保存框。备份里带着本机钥匙，谁拿到谁能读。'
+        : '手机导出后会存到「文件管理 → Download」。浏览器不允许网页直接跳转到文件夹，所以这里做不到一键打开。';
+    }
+  }
+
+  async function chooseBackupDir() {
+    if (!canPickDir) { toast('这个浏览器不支持选文件夹'); return; }
+    try {
+      const h = await window.showDirectoryPicker({ id: 'vault-backup', mode: 'readwrite', startIn: 'documents' });
+      const perm = await h.requestPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') { toast('没给写入权限，再选一次'); return; }
+      backupDirHandle = h;
+      await idbSet('backupDir', h);
+      renderBackupState();
+      toast(`备份文件夹：${h.name}`);
+    } catch (e) {
+      if (e?.name !== 'AbortError') toast('没能选这个文件夹');
+    }
+  }
+
+  async function saveIntoDir() {
+    const h = backupDirHandle;
+    if (!h) { toast('先选一个文件夹'); return; }
+    try {
+      let perm = await h.queryPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') perm = await h.requestPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') { toast('没有写入权限，重新选一下文件夹'); return; }
+      const name = backupFileName();
+      const fh = await h.getFileHandle(name, { create: true });
+      const w = await fh.createWritable();
+      await w.write(backupJSON());
+      await w.close();
+      markBackedUp();
+      toast(`已存进「${h.name}」`);
+    } catch (e) {
+      toast('写入失败：' + (e?.message || e));
+    }
+  }
+
+  function markBackedUp() {
+    state.prefs.lastBackupAt = Date.now();
+    savePrefs();
+    renderBackupState();
+  }
+
   function exportBackup() {
-    const stamp = new Date().toISOString().slice(0, 10);
-    const payload = { ...state.file, deviceKey: state.deviceKey || deviceKey() };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const blob = new Blob([backupJSON()], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `密码箱备份-${stamp}.json`;
+    a.download = backupFileName();
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    toast('已导出；文件里带着本机钥匙，谁拿到文件谁能读，放好');
+    markBackedUp();
+    toast('已导出；文件里带着本机钥匙，谁拿到谁能读，放好');
   }
 
   async function importBackup(file) {
@@ -803,6 +928,8 @@
     });
 
     $('btn-export').addEventListener('click', exportBackup);
+    $('btn-pick-dir').addEventListener('click', chooseBackupDir);
+    $('btn-save-dir').addEventListener('click', saveIntoDir);
     $('btn-import').addEventListener('click', () => $('import-file').click());
     $('import-file').addEventListener('change', (e) => {
       const f = e.target.files?.[0];
@@ -827,6 +954,7 @@
     injectIcons();
     loadPrefs();
     bind();
+    loadBackupDir();
 
     state.file = loadFile();
 

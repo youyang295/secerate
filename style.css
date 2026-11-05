@@ -11,6 +11,7 @@
   --accent: #4f6ef7;
   --accent-ink: #ffffff;
   --danger: #e14b4b;
+  --warn: #b45309;
   --radius: 16px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -25,6 +26,7 @@
     --line: #262a35;
     --accent: #6b85ff;
     --danger: #ff6b6b;
+    --warn: #f5a524;
   }
 }
 
@@ -728,6 +730,54 @@ input[type='range'] {
 
 .settings-row .btn {
   flex: 1;
+}
+
+/* ---------------- 备份文件夹 ---------------- */
+
+.backup-dir {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+
+.backup-dir-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.backup-dir-icon {
+  display: inline-flex;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.backup-dir-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.backup-dir-name {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-row .btn.mini {
+  flex: 0 1 auto;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.settings-note.is-stale {
+  color: var(--warn);
+  font-weight: 600;
 }
 
 .danger-zone .settings-title {
