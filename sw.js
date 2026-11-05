@@ -1,7 +1,7 @@
 /* 离线缓存：整个 app 只有几个静态文件，装一次就能断网用 */
 /* 改了任何文件，把下面的版本号加 1，不然手机上还是旧缓存 */
 
-const CACHE = 'vault-v2';
+const CACHE = 'vault-v3';
 
 const ASSETS = [
   './',

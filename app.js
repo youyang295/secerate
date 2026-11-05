@@ -48,6 +48,7 @@
 
   const STORE_KEY = 'vault.file.v1';
   const PREFS_KEY = 'vault.prefs.v1';
+  const DEVICE_KEY_STORE = 'vault.device.v1';
   const CLIPBOARD_CLEAR_MS = 30000;
 
   const uid = () => crypto.randomUUID?.() || String(Date.now() + Math.random());
@@ -58,15 +59,13 @@
     entries: [],
     folders: [],
     folderFilter: 'all',
+    deviceKey: null,
     prefs: { autoLock: 5 },
     editingId: null,
     revealed: new Set(),
     query: '',
-    idleTimer: null,
     clipTimer: null,
     busy: false,
-    fail: 0,
-    setupMode: false,
     toastTimer: null,
     gen: { length: 20, lower: true, upper: true, digit: true, symbol: true },
   };
@@ -155,28 +154,28 @@
   }
 
   /* =========================================================
-     解锁 / 初始化
+     打开保险箱（打开即用，不再问主密码）
+     ---------------------------------------------------------
+     钥匙 = 随机 32 字节，存在本机浏览器里，打开就能解开。
+     · 数据在磁盘上仍是密文：随手翻 localStorage 看到的是乱码
+     · 代价：谁能打开这台手机 / 这个浏览器，谁就能看到全部内容
      ========================================================= */
 
-  function renderLockMode() {
-    const setup = !state.file;
-    state.setupMode = setup;
+  function deviceKey() {
+    let k = null;
+    try { k = localStorage.getItem(DEVICE_KEY_STORE); } catch { /* 忽略 */ }
+    if (k && k.length >= 32) return k;
+    k = toB64(randomBytes(32));
+    try { localStorage.setItem(DEVICE_KEY_STORE, k); } catch { /* 忽略 */ }
+    return k;
+  }
 
-    $('lock-hint').textContent = setup ? '第一次用，先设一个主密码' : '输入主密码解锁';
-    $('lock-pw').placeholder = setup ? '设置主密码' : '主密码';
-    $('lock-pw2').hidden = !setup;
-    $('lock-submit').textContent = setup ? '创建保险箱' : '解锁';
-    $('lock-note').textContent = setup
-      ? '主密码只存在你脑子里，忘了就真的打不开，也没有任何后门能帮你找回。'
-      : '主密码只存在你脑子里，忘了就真的打不开。';
-
-    const lockMsg = $('lock-msg');
-    if (lockMsg.dataset.imported === '1') {
-      lockMsg.hidden = false;
-      lockMsg.classList.add('is-ok');
-      lockMsg.textContent = '备份已导入，用它的主密码解锁';
-      lockMsg.dataset.imported = '0';
-    }
+  /** 只给升级前的老箱子用：输一次原来的主密码，迁移成本机钥匙 */
+  function renderMigrateMode() {
+    $('lock-hint').textContent = '输一次原来的主密码';
+    $('lock-pw').placeholder = '原来的主密码';
+    $('lock-submit').textContent = '继续';
+    $('lock-note').textContent = '这是升级前用主密码加密的旧箱子，输对这一次以后就不再问了。';
   }
 
   function setLockBusy(on, text) {
@@ -201,64 +200,68 @@
   async function handleLockSubmit(e) {
     e.preventDefault();
     if (state.busy) return;
-
     const pw = $('lock-pw').value;
-    const pw2 = $('lock-pw2').value;
-
-    if (!pw) { lockMessage('主密码不能为空'); return; }
-
-    if (state.setupMode) {
-      if (pw.length < 8) { lockMessage('至少 8 位，短了不安全'); return; }
-      if (pw !== pw2) { lockMessage('两次输入不一致'); return; }
-      await createVault(pw);
-    } else {
-      await unlock(pw);
-    }
+    if (!pw) { lockMessage('先填原来的主密码'); return; }
+    await migrateFromPassword(pw);
   }
 
-  async function createVault(password) {
-    setLockBusy(true, '创建中…');
+  async function createVault() {
+    const devKey = deviceKey();
     try {
-      const fresh = newVaultFile(password);
-      const { key } = await openVault(fresh, password);
+      const fresh = newVaultFile(devKey);
+      const { key } = await openVault(fresh, devKey);
       state.file = await sealVault(fresh, key, { entries: [], folders: [] });
       state.key = key;
+      state.deviceKey = devKey;
       state.entries = [];
       state.folders = [];
       saveFile();
-      renderLockMode();
       enterVault();
-      toast('保险箱建好了，先存一条试试');
+      toast('建好了，先存一条试试');
     } catch (err) {
       lockMessage('创建失败：' + (err?.message || err));
-    } finally {
-      setLockBusy(false);
+      setView('lock');
     }
   }
 
-  async function unlock(password) {
-    setLockBusy(true, '解密中…');
+  /** 用本机钥匙直接打开；打不开返回 false */
+  async function openWithDeviceKey() {
+    const devKey = deviceKey();
     try {
-      const { key, payload } = await openVault(state.file, password);
+      const { key, payload } = await openVault(state.file, devKey);
       state.key = key;
+      state.deviceKey = devKey;
       state.entries = Array.isArray(payload.entries) ? payload.entries : [];
       state.folders = Array.isArray(payload.folders) ? payload.folders : [];
-      state.fail = 0;
+      enterVault();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** 一次性迁移：老箱子（主密码加密）→ 本机钥匙 */
+  async function migrateFromPassword(oldPassword) {
+    setLockBusy(true, '处理中…');
+    try {
+      const { payload } = await openVault(state.file, oldPassword);
+      const devKey = deviceKey();
+      const newFile = await rekeyVault(state.file, payload, devKey);
+      const opened = await openVault(newFile, devKey);
+      state.file = newFile;
+      state.key = opened.key;
+      state.deviceKey = devKey;
+      state.entries = Array.isArray(payload.entries) ? payload.entries : [];
+      state.folders = Array.isArray(payload.folders) ? payload.folders : [];
+      saveFile();
       $('lock-pw').value = '';
-      $('lock-pw2').value = '';
       lockMessage('');
       enterVault();
+      toast('好了，以后打开就直接进来');
     } catch (err) {
-      state.fail += 1;
-      const isWrong = err?.name === 'OperationError';
-      lockMessage(isWrong ? '主密码不对，再试一次' : '打不开：' + (err?.message || err));
+      lockMessage(err?.name === 'OperationError' ? '主密码不对，再试一次' : '打不开：' + (err?.message || err));
       $('lock-pw').value = '';
-      $('lock-pw').focus();
-      if (isWrong) {
-        const wait = Math.min(300 * state.fail, 3000);
-        setLockBusy(true, `请等 ${(wait / 1000).toFixed(1)} 秒…`);
-        await new Promise((r) => setTimeout(r, wait));
-      }
+      $('lock-pw').focus?.();
     } finally {
       setLockBusy(false);
     }
@@ -270,39 +273,6 @@
     state.folderFilter = 'all';
     $('search').value = '';
     renderList();
-    armIdleTimer();
-  }
-
-  function lock() {
-    state.key = null;
-    state.entries = [];
-    state.folders = [];
-    state.folderFilter = 'all';
-    state.revealed.clear();
-    clearTimeout(state.idleTimer);
-    state.idleTimer = null;
-    closeSheet('edit');
-    closeSheet('gen');
-    closeSheet('settings');
-    renderLockMode();
-    setView('lock');
-    lockMessage('');
-    $('lock-pw').value = '';
-    $('lock-pw2').value = '';
-    $('lock-pw').focus?.();
-  }
-
-  /* ---------------- 自动锁定 ---------------- */
-
-  function armIdleTimer() {
-    clearTimeout(state.idleTimer);
-    if (!state.key) return;
-    state.idleTimer = setTimeout(() => {
-      if (state.key) {
-        lock();
-        lockMessage('闲置太久，已自动锁定');
-      }
-    }, state.prefs.autoLock * 60000);
   }
 
   /* =========================================================
@@ -360,8 +330,8 @@
     renderFolders();
 
     $('vault-meta').textContent = state.entries.length
-      ? `${state.entries.length} 条 · 已解锁`
-      : '空的 · 已解锁';
+      ? `${state.entries.length} 条`
+      : '还没有东西';
 
     listEl.innerHTML = items.map(entryCard).join('');
     emptyEl.hidden = items.length > 0;
@@ -595,7 +565,6 @@
     if (!state.key) return;
     state.file = await sealVault(state.file, state.key, { entries: state.entries, folders: state.folders });
     saveFile();
-    armIdleTimer();
   }
 
   /* =========================================================
@@ -663,23 +632,20 @@
      ========================================================= */
 
   function openSettings() {
-    $('s-autolock').value = String(state.prefs.autoLock);
-    $('s-old-pw').value = '';
-    $('s-new-pw').value = '';
-    $('s-new-pw2').value = '';
     renderFolderSettings();
     openSheet('settings');
   }
 
   function exportBackup() {
     const stamp = new Date().toISOString().slice(0, 10);
-    const blob = new Blob([JSON.stringify(state.file, null, 2)], { type: 'application/json' });
+    const payload = { ...state.file, deviceKey: state.deviceKey || deviceKey() };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `密码箱备份-${stamp}.json`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    toast('已导出加密备份，没有主密码谁也打不开');
+    toast('已导出；文件里带着本机钥匙，谁拿到文件谁能读，放好');
   }
 
   async function importBackup(file) {
@@ -701,42 +667,32 @@
     }
     if (!confirm('导入会覆盖当前保险箱里的全部内容，继续？')) return;
 
+    /* 新式备份：文件里自带钥匙，直接开 */
+    if (typeof parsed.deviceKey === 'string' && parsed.deviceKey.length >= 32) {
+      const { deviceKey: dk, ...rest } = parsed;
+      state.file = rest;
+      state.key = null;
+      state.entries = [];
+      state.deviceKey = dk;
+      try { localStorage.setItem(DEVICE_KEY_STORE, dk); } catch { /* 忽略 */ }
+      saveFile();
+      closeSheet('settings');
+      const ok = await openWithDeviceKey();
+      toast(ok ? '导入成功' : '导入的文件打不开');
+      return;
+    }
+
+    /* 老式备份：用主密码加密的，输一次它的主密码迁移 */
     state.file = parsed;
     state.key = null;
     state.entries = [];
     saveFile();
     closeSheet('settings');
-    lock();
-    $('lock-msg').dataset.imported = '1';
-    renderLockMode();
-    toast('导入成功，请用该备份的主密码解锁');
-  }
-
-  async function rekey() {
-    const oldPw = $('s-old-pw').value;
-    const pw = $('s-new-pw').value;
-    const pw2 = $('s-new-pw2').value;
-
-    if (!oldPw) { toast('先填当前主密码'); return; }
-    if (pw.length < 8) { toast('新密码至少 8 位'); return; }
-    if (pw !== pw2) { toast('两次新密码不一致'); return; }
-
-    try {
-      await openVault(state.file, oldPw);
-    } catch {
-      toast('当前主密码不对');
-      return;
-    }
-
-    const newFile = await rekeyVault(state.file, { entries: state.entries, folders: state.folders }, pw);
-    const opened = await openVault(newFile, pw);
-    state.file = newFile;
-    state.key = opened.key;
-    saveFile();
-    $('s-old-pw').value = '';
-    $('s-new-pw').value = '';
-    $('s-new-pw2').value = '';
-    toast('主密码已修改，旧密码立即失效');
+    renderMigrateMode();
+    setView('lock');
+    lockMessage('这是旧备份，输一次它的主密码');
+    $('lock-pw').value = '';
+    $('lock-pw').focus?.();
   }
 
   function wipe() {
@@ -744,6 +700,7 @@
     if (!confirm('再确认一次：现在清空？')) return;
     localStorage.removeItem(STORE_KEY);
     localStorage.removeItem(PREFS_KEY);
+    localStorage.removeItem(DEVICE_KEY_STORE);
     location.reload();
   }
 
@@ -753,20 +710,6 @@
 
   function bind() {
     $('lock-form').addEventListener('submit', handleLockSubmit);
-
-    $('lock-pw').addEventListener('input', () => {
-      if (!state.setupMode) return;
-      const pw = $('lock-pw').value;
-      const box = $('lock-strength');
-      if (!pw) { box.hidden = true; return; }
-      box.hidden = false;
-      const bits = passwordBits(pw);
-      const label = passwordLabel(bits);
-      box.dataset.level = String(label.level);
-      $('lock-strength-text').textContent = `${label.text} · 约 ${bits} 位熵`;
-    });
-
-    $('btn-lock').addEventListener('click', () => { lock(); toast('已锁定'); });
 
     $('btn-settings').addEventListener('click', openSettings);
 
@@ -859,13 +802,6 @@
       });
     });
 
-    $('s-autolock').addEventListener('change', (e) => {
-      state.prefs.autoLock = Number(e.target.value);
-      savePrefs();
-      armIdleTimer();
-      toast(`闲置 ${state.prefs.autoLock} 分钟自动锁定`);
-    });
-
     $('btn-export').addEventListener('click', exportBackup);
     $('btn-import').addEventListener('click', () => $('import-file').click());
     $('import-file').addEventListener('change', (e) => {
@@ -874,12 +810,7 @@
       e.target.value = '';
     });
 
-    $('btn-rekey').addEventListener('click', rekey);
     $('btn-wipe').addEventListener('click', wipe);
-
-    ['pointerdown', 'keydown'].forEach((ev) =>
-      document.addEventListener(ev, () => { if (state.key) armIdleTimer(); }, { passive: true })
-    );
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -892,13 +823,23 @@
      启动
      ========================================================= */
 
-  function boot() {
+  async function boot() {
     injectIcons();
     loadPrefs();
-    state.file = loadFile();
-    renderLockMode();
     bind();
-    if (state.file) $('lock-pw').focus();
+
+    state.file = loadFile();
+
+    if (!state.file) {
+      await createVault();
+    } else if (!(await openWithDeviceKey())) {
+      /* 只有升级前用主密码加密的老箱子才走到这里 */
+      renderMigrateMode();
+      setView('lock');
+      lockMessage('');
+      $('lock-pw').value = '';
+      setTimeout(() => $('lock-pw').focus?.(), 60);
+    }
 
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       addEventListener('load', () => {

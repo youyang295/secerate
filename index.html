@@ -13,55 +13,40 @@
 </head>
 <body>
   <main class="app">
-    <!-- ================= 解锁 / 初始化 ================= -->
-    <section id="view-lock" class="view is-active">
+    <!-- ================= 旧版迁移（只在升级时出现一次） ================= -->
+    <section id="view-lock" class="view">
       <div class="lock-box">
         <div class="lock-mark" data-icon="shield"></div>
         <h1 class="lock-title">密码箱</h1>
-        <p id="lock-hint" class="lock-hint">输入主密码解锁</p>
+        <p id="lock-hint" class="lock-hint">输一次原来的主密码</p>
 
         <form id="lock-form" class="lock-form" autocomplete="off">
           <input
             id="lock-pw"
             class="lock-input"
             type="password"
-            placeholder="主密码"
+            placeholder="原来的主密码"
             autocomplete="current-password"
             spellcheck="false"
           />
-          <input
-            id="lock-pw2"
-            class="lock-input"
-            type="password"
-            placeholder="再输一次"
-            autocomplete="new-password"
-            spellcheck="false"
-            hidden
-          />
 
-          <div id="lock-strength" class="strength" hidden>
-            <div class="strength-bar"><i></i><i></i><i></i><i></i></div>
-            <span id="lock-strength-text" class="strength-text"></span>
-          </div>
-
-          <button id="lock-submit" class="btn primary block" type="submit">解锁</button>
+          <button id="lock-submit" class="btn primary block" type="submit">继续</button>
           <p id="lock-msg" class="lock-msg" hidden></p>
         </form>
 
-        <p id="lock-note" class="lock-note">主密码只存在你脑子里，忘了就真的打不开</p>
+        <p id="lock-note" class="lock-note">升级前的老箱子要输一次旧密码，之后就改成打开即用。</p>
       </div>
     </section>
 
     <!-- ================= 列表 ================= -->
-    <section id="view-list" class="view">
+    <section id="view-list" class="view is-active">
       <header class="topbar">
         <div class="topbar-row">
           <div class="topbar-title">
             <h1>密码箱</h1>
-            <p id="vault-meta" class="vault-meta">已锁定</p>
+            <p id="vault-meta" class="vault-meta">—</p>
           </div>
           <div class="topbar-actions">
-            <button id="btn-lock" class="icon-btn" data-icon="lock" title="锁定"></button>
             <button id="btn-settings" class="icon-btn" data-icon="gear" title="设置"></button>
           </div>
         </div>
@@ -183,15 +168,10 @@
       </div>
 
       <div class="settings">
-        <label class="field">
-          <span class="field-label">闲置多久自动锁定</span>
-          <select id="s-autolock">
-            <option value="1">1 分钟</option>
-            <option value="5">5 分钟</option>
-            <option value="15">15 分钟</option>
-            <option value="30">30 分钟</option>
-          </select>
-        </label>
+        <div class="settings-block">
+          <p class="settings-title">打开方式</p>
+          <p class="settings-note">打开就是列表，不问密码。内容在本机是加密存的，钥匙也在本机——谁能打开这台手机，谁就能看到里面。</p>
+        </div>
 
         <div class="settings-block">
           <p class="settings-title">文件夹</p>
@@ -200,29 +180,12 @@
 
         <div class="settings-block">
           <p class="settings-title">备份</p>
-          <p class="settings-note">导出的是加密文件，放到哪都行；换手机、清缓存前记得导一份。</p>
+          <p class="settings-note">备份文件里带着本机钥匙，换手机也能恢复；但谁拿到这个文件，谁就能读，放好。</p>
           <div class="settings-row">
             <button id="btn-export" class="btn" data-icon="download">导出备份</button>
             <button id="btn-import" class="btn" data-icon="upload">导入备份</button>
           </div>
           <input id="import-file" type="file" accept="application/json,.json" hidden />
-        </div>
-
-        <div class="settings-block">
-          <p class="settings-title">修改主密码</p>
-          <label class="field">
-            <span class="field-label">当前主密码</span>
-            <input id="s-old-pw" type="password" autocomplete="current-password" spellcheck="false" />
-          </label>
-          <label class="field">
-            <span class="field-label">新主密码</span>
-            <input id="s-new-pw" type="password" autocomplete="new-password" spellcheck="false" />
-          </label>
-          <label class="field">
-            <span class="field-label">再输一次</span>
-            <input id="s-new-pw2" type="password" autocomplete="new-password" spellcheck="false" />
-          </label>
-          <button id="btn-rekey" class="btn">修改主密码</button>
         </div>
 
         <div class="settings-block danger-zone">
