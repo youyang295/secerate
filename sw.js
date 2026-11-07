@@ -1,14 +1,19 @@
-/* 绂荤嚎缂撳瓨锛氭暣涓?app 鍙湁鍑犱釜闈欐€佹枃浠讹紝瑁呬竴娆″氨鑳芥柇缃戠敤 */
-/* 鏀逛簡浠讳綍鏂囦欢锛屾妸涓嬮潰鐨勭増鏈彿鍔?1锛屼笉鐒舵墜鏈轰笂杩樻槸鏃х紦瀛?*/
+/* =========================================================
+   离线缓存
+   ---------------------------------------------------------
+   策略：先找网络，网络失败才用缓存。
+   以前是「先找缓存」，结果改完文件手机上永远看到旧版，
+   用户得反复清缓存才能更新——对纯静态小站不值得。
+   ========================================================= */
 
-const CACHE = 'vault-v7';
+const CACHE = 'vault-v9';
 
 const ASSETS = [
   './',
   './index.html',
   './style.css',
-  './app.js',
   './vault.js',
+  './app.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -16,7 +21,11 @@ const ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches
+      .open(CACHE)
+      .then((cache) => cache.addAll(ASSETS))
+      .then(() => self.skipWaiting())
+      .catch(() => self.skipWaiting())
   );
 });
 
@@ -30,21 +39,22 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  if (request.method !== 'GET') return;
+  const req = event.request;
+  if (req.method !== 'GET') return;
+
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request)
-        .then((res) => {
-          if (res.ok && new URL(request.url).origin === location.origin) {
-            const copy = res.clone();
-            caches.open(CACHE).then((cache) => cache.put(request, copy));
-          }
-          return res;
-        })
-        .catch(() => caches.match('./index.html'));
-    })
+    fetch(req)
+      .then((res) => {
+        /* 拿到新的就顺手更新缓存，断网时还能用 */
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
+        }
+        return res;
+      })
+      .catch(() => caches.match(req).then((cached) => cached || caches.match('./index.html')))
   );
 });

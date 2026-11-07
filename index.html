@@ -9,7 +9,7 @@
   <link rel="manifest" href="./manifest.json" />
   <link rel="icon" href="./icons/icon-192.png" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="./style.css?v=9" />
 </head>
 <body>
   <main class="app">
@@ -212,7 +212,7 @@
           <button id="btn-wipe" class="btn danger">清空所有数据</button>
         </div>
 
-        <p class="settings-note build-note">版本 <span id="build-tag"></span></p>
+        <p class="settings-note build-note">版本 <span id="build-tag"></span> · <a href="#" id="btn-force-update">检查更新</a></p>
       </div>
     </div>
   </div>
@@ -250,7 +250,7 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="./vault.js"></script>
-  <script src="./app.js"></script>
+  <script src="./vault.js?v=9"></script>
+  <script src="./app.js?v=9"></script>
 </body>
 </html>

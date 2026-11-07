@@ -8,7 +8,7 @@
   'use strict';
 
   /* 改文件时把这里一起改，方便确认手机上跑的是哪一版 */
-  const BUILD = 'v6 · 2026-11-07';
+  const BUILD = 'v8 · 2026-11-07';
 
   /* ---------------- 图标 ---------------- */
 
@@ -865,6 +865,24 @@
     }, 60);
   }
 
+  /* 手机上换了新版却一直看到旧界面时，用这个：清掉 Service Worker 和
+     它缓存的文件，再带一个新参数重新打开。只动缓存，不碰 localStorage，
+     所以箱子里的数据不会丢。 */
+  async function forceUpdate() {
+    toast('正在清旧缓存…');
+    try {
+      const regs = (await navigator.serviceWorker?.getRegistrations?.()) || [];
+      await Promise.all(regs.map((r) => r.unregister()));
+    } catch { /* 忽略 */ }
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    } catch { /* 忽略 */ }
+    const url = new URL(location.href);
+    url.searchParams.set('fresh', String(Date.now()));
+    location.replace(url.toString());
+  }
+
   async function importBackup(file) {
     importBackupText(await file.text());
   }
@@ -1036,6 +1054,11 @@
 
     $('btn-share').addEventListener('click', shareBackup);
     $('btn-copy-backup').addEventListener('click', copyBackup);
+    $('btn-force-update').addEventListener('click', (e) => {
+      e.preventDefault();
+      forceUpdate();
+    });
+
     $('btn-paste-import').addEventListener('click', () => {
       const ta = $('backup-paste-text');
       if (ta) ta.value = '';
