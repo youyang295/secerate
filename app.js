@@ -7,6 +7,9 @@
 (() => {
   'use strict';
 
+  /* 改文件时把这里一起改，方便确认手机上跑的是哪一版 */
+  const BUILD = 'v5 · 2026-11-07';
+
   /* ---------------- 图标 ---------------- */
 
   const SVG = (body, opts = '') =>
@@ -717,7 +720,9 @@
     if (dirName) dirName.textContent = backupDirHandle ? backupDirHandle.name : '还没选文件夹';
 
     const shareBtn = $('btn-share');
-    if (shareBtn) shareBtn.hidden = !canShareFile(makeBackupFile());
+    if (shareBtn) shareBtn.hidden = false;
+    const tag = $('build-tag');
+    if (tag) tag.textContent = BUILD;
 
     if (hint) {
       hint.textContent = canPickDir
@@ -798,7 +803,8 @@
   async function shareBackup() {
     const file = makeBackupFile();
     if (!canShareFile(file)) {
-      toast('这个浏览器不支持分享文件，用「导出备份」或「复制备份内容」');
+      /* 很多国产手机浏览器没有「分享文件」能力，别让按钮点了没反应 */
+      copyBackup();
       return;
     }
     try {
@@ -807,7 +813,7 @@
       toast('已保存');
     } catch (e) {
       if (e?.name === 'AbortError') return;
-      toast('分享没成功，换「复制备份内容」试试');
+      copyBackup();
     }
   }
 
