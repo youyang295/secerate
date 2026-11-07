@@ -27,6 +27,7 @@
     download: SVG('<path d="M12 4v10.5"/><path d="M8 11l4 4 4-4"/><path d="M4.5 18.5h15"/>'),
     folder: SVG('<path d="M3.5 7.5A1.5 1.5 0 015 6h4.2l1.8 2.2H19a1.5 1.5 0 011.5 1.5v7.8A1.5 1.5 0 0119 19H5a1.5 1.5 0 01-1.5-1.5z"/>'),
     upload: SVG('<path d="M12 20V9.5"/><path d="M8 13l4-4 4 4"/><path d="M4.5 5.5h15"/>'),
+    share: SVG('<path d="M12 15.5V4.5"/><path d="M8.2 8.3L12 4.5l3.8 3.8"/><path d="M6 12.5v5.2A1.8 1.8 0 007.8 19.5h8.4a1.8 1.8 0 001.8-1.8v-5.2"/>'),
     trash: SVG('<path d="M4.5 7h15"/><path d="M9.5 7V5.4A1.4 1.4 0 0110.9 4h2.2a1.4 1.4 0 011.4 1.4V7"/><path d="M6.5 7l.8 12.1a1.4 1.4 0 001.4 1.3h6.6a1.4 1.4 0 001.4-1.3L18.5 7"/>'),
   };
 
@@ -715,10 +716,13 @@
     if (dirBox) dirBox.hidden = !canPickDir;
     if (dirName) dirName.textContent = backupDirHandle ? backupDirHandle.name : '还没选文件夹';
 
+    const shareBtn = $('btn-share');
+    if (shareBtn) shareBtn.hidden = !canShareFile(makeBackupFile());
+
     if (hint) {
       hint.textContent = canPickDir
         ? '选一次文件夹，以后点「存进这个文件夹」就直接写进去，不再弹保存框。备份里带着本机钥匙，谁拿到谁能读。'
-        : '手机导出后会存到「文件管理 → Download」。浏览器不允许网页直接跳转到文件夹，所以这里做不到一键打开。';
+        : '手机上点「存到手机…」会弹系统面板，选「保存到文件」就能自己挑位置；点「导出备份」是直接下载，安卓浏览器常把它塞进自己的下载目录，事后不好找。都找不到就用「复制备份内容」。';
     }
   }
 
@@ -767,10 +771,92 @@
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = backupFileName();
+    a.rel = 'noopener';
+    a.style.display = 'none';
+    document.body.appendChild(a);
     a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     markBackedUp();
-    toast('已导出；文件里带着本机钥匙，谁拿到谁能读，放好');
+    toast(`已导出 ${backupFileName()}；找不到就用「存到手机…」`);
+  }
+
+  /* 「存到手机…」：走系统分享面板。手机上比直接下载可靠得多，
+     因为浏览器下载会悄悄扔进它自己的目录，事后很难找。 */
+  function canShareFile(file) {
+    try {
+      return !!(navigator.canShare && navigator.share && navigator.canShare({ files: [file] }));
+    } catch {
+      return false;
+    }
+  }
+
+  function makeBackupFile() {
+    return new File([backupJSON()], backupFileName(), { type: 'application/json' });
+  }
+
+  async function shareBackup() {
+    const file = makeBackupFile();
+    if (!canShareFile(file)) {
+      toast('这个浏览器不支持分享文件，用「导出备份」或「复制备份内容」');
+      return;
+    }
+    try {
+      await navigator.share({ files: [file], title: backupFileName() });
+      markBackedUp();
+      toast('已保存');
+    } catch (e) {
+      if (e?.name === 'AbortError') return;
+      toast('分享没成功，换「复制备份内容」试试');
+    }
+  }
+
+  /* 最后的保底：内容进剪贴板，粘到备忘录 / 微信「文件传输助手」都能存 */
+  async function copyBackup() {
+    const text = backupJSON();
+    try {
+      await navigator.clipboard.writeText(text);
+      markBackedUp();
+      toast('备份内容已复制，粘到备忘录或文件传输助手里就行');
+      return;
+    } catch {
+      /* 继续走老办法 */
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch {
+      ok = false;
+    }
+    ta.remove();
+    if (ok) {
+      markBackedUp();
+      toast('备份内容已复制，粘到备忘录里就行');
+    } else {
+      /* 连 execCommand 都不行（有些手机浏览器会拦）：直接把内容摊开让人长按选 */
+      showBackupText(text);
+    }
+  }
+
+  function showBackupText(text) {
+    const box = $('backup-text');
+    if (!box) {
+      toast('浏览器不让复制，请换一个浏览器试试');
+      return;
+    }
+    box.value = text;
+    openSheet('backup-text');
+    markBackedUp();
+    setTimeout(() => {
+      try { box.focus(); box.select(); } catch { /* 忽略 */ }
+    }, 60);
   }
 
   async function importBackup(file) {
@@ -927,14 +1013,22 @@
       });
     });
 
-    $('btn-export').addEventListener('click', exportBackup);
-    $('btn-pick-dir').addEventListener('click', chooseBackupDir);
+    $('btn-export').addEventListener('click', exportBackup);    $('btn-pick-dir').addEventListener('click', chooseBackupDir);
     $('btn-save-dir').addEventListener('click', saveIntoDir);
     $('btn-import').addEventListener('click', () => $('import-file').click());
     $('import-file').addEventListener('change', (e) => {
       const f = e.target.files?.[0];
       if (f) importBackup(f);
       e.target.value = '';
+    });
+
+    $('btn-share').addEventListener('click', shareBackup);
+    $('btn-copy-backup').addEventListener('click', copyBackup);
+    $('btn-backup-text-select').addEventListener('click', () => {
+      const ta = $('backup-text');
+      if (!ta) return;
+      ta.focus();
+      ta.select();
     });
 
     $('btn-wipe').addEventListener('click', wipe);

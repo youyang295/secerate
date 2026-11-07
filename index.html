@@ -185,6 +185,10 @@
             <button id="btn-export" class="btn" data-icon="download">导出备份</button>
             <button id="btn-import" class="btn" data-icon="upload">导入备份</button>
           </div>
+          <div class="settings-row">
+            <button id="btn-share" class="btn mini" data-icon="share" hidden>存到手机…</button>
+            <button id="btn-copy-backup" class="btn mini">复制备份内容</button>
+          </div>
 
           <div id="backup-dir" class="backup-dir" hidden>
             <div class="backup-dir-head">
@@ -206,6 +210,22 @@
           <p class="settings-note">清空后本地什么都不剩，没有备份就找不回来了。</p>
           <button id="btn-wipe" class="btn danger">清空所有数据</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 备份内容（复制不出来时的兜底） ================= -->
+  <div id="sheet-backup-text" class="sheet" hidden>
+    <div class="sheet-panel" role="dialog" aria-modal="true">
+      <div class="sheet-head">
+        <h2>备份内容</h2>
+        <button class="icon-btn" data-close="backup-text" data-icon="close" title="关闭"></button>
+      </div>
+      <p class="sheet-note">长按下面这段文字 → 全选 → 复制，粘到备忘录或微信「文件传输助手」。这段文字本身就是备份，别删。</p>
+      <textarea id="backup-text" class="backup-text" rows="10" readonly spellcheck="false"></textarea>
+      <div class="sheet-actions">
+        <button type="button" class="btn" id="btn-backup-text-select">全选</button>
+        <button type="button" class="btn primary" data-close="backup-text">好了</button>
       </div>
     </div>
   </div>

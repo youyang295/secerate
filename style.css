@@ -780,6 +780,31 @@ input[type='range'] {
   font-weight: 600;
 }
 
+/* ---------------- 备份内容弹层 ---------------- */
+
+.sheet-note {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.backup-text {
+  width: 100%;
+  min-height: 170px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+  background: color-mix(in srgb, var(--text) 3%, var(--card));
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  resize: vertical;
+  word-break: break-all;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .danger-zone .settings-title {
   color: var(--danger);
 }
