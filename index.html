@@ -188,6 +188,7 @@
           <div class="settings-row">
             <button id="btn-share" class="btn mini" data-icon="share">存到手机…</button>
             <button id="btn-copy-backup" class="btn mini">复制备份内容</button>
+            <button id="btn-paste-import" class="btn mini">粘贴导入</button>
           </div>
 
           <div id="backup-dir" class="backup-dir" hidden>
@@ -228,6 +229,21 @@
       <div class="sheet-actions">
         <button type="button" class="btn" id="btn-backup-text-select">全选</button>
         <button type="button" class="btn primary" data-close="backup-text">好了</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 粘贴导入 ================= -->
+  <div id="sheet-backup-paste" class="sheet" hidden>
+    <div class="sheet-panel" role="dialog" aria-modal="true">
+      <div class="sheet-head">
+        <h2>粘贴导入</h2>
+        <button class="icon-btn" data-close="backup-paste" data-icon="close" title="关闭"></button>
+      </div>
+      <p class="sheet-note">把上次「复制备份内容」存下来的那一整段文字粘进来，点下面的按钮就能恢复。会覆盖现在箱子里的所有内容。</p>
+      <textarea id="backup-paste-text" class="backup-text" rows="8" placeholder="在这里长按 → 粘贴" spellcheck="false"></textarea>
+      <div class="sheet-actions">
+        <button type="button" class="btn primary" id="btn-do-paste-import">导入</button>
       </div>
     </div>
   </div>

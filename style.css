@@ -725,6 +725,7 @@ input[type='range'] {
 
 .settings-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 

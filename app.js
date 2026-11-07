@@ -8,7 +8,7 @@
   'use strict';
 
   /* 改文件时把这里一起改，方便确认手机上跑的是哪一版 */
-  const BUILD = 'v5 · 2026-11-07';
+  const BUILD = 'v6 · 2026-11-07';
 
   /* ---------------- 图标 ---------------- */
 
@@ -866,11 +866,16 @@
   }
 
   async function importBackup(file) {
+    importBackupText(await file.text());
+  }
+
+  /* 手机浏览器不让存文件时，靠「复制 + 粘贴」也能把数据搬过来 */
+  async function importBackupText(text) {
     let parsed;
     try {
-      parsed = JSON.parse(await file.text());
+      parsed = JSON.parse(String(text || '').trim());
     } catch {
-      toast('这个文件不是合法的备份');
+      toast('这段文字不是合法的备份');
       return;
     }
     if (parsed?.format !== VAULT_FORMAT || !parsed.kdf?.salt) {
@@ -894,6 +899,7 @@
       try { localStorage.setItem(DEVICE_KEY_STORE, dk); } catch { /* 忽略 */ }
       saveFile();
       closeSheet('settings');
+      closeSheet('backup-paste');
       const ok = await openWithDeviceKey();
       toast(ok ? '导入成功' : '导入的文件打不开');
       return;
@@ -1030,6 +1036,20 @@
 
     $('btn-share').addEventListener('click', shareBackup);
     $('btn-copy-backup').addEventListener('click', copyBackup);
+    $('btn-paste-import').addEventListener('click', () => {
+      const ta = $('backup-paste-text');
+      if (ta) ta.value = '';
+      openSheet('backup-paste');
+      setTimeout(() => { try { ta.focus(); } catch { /* 忽略 */ } }, 80);
+    });
+
+    $('btn-do-paste-import').addEventListener('click', () => {
+      const ta = $('backup-paste-text');
+      const text = ta ? ta.value : '';
+      if (!text.trim()) { toast('先粘贴备份内容'); return; }
+      importBackupText(text);
+    });
+
     $('btn-backup-text-select').addEventListener('click', () => {
       const ta = $('backup-text');
       if (!ta) return;
